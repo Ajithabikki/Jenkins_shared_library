@@ -4,5 +4,5 @@ def call(String gitUrl, String gitBranch) {
         userRemoteConfigs: [[url: gitUrl]],
         branches: [[name: gitBranch]] 
         
-    ]
+    ])
 }
