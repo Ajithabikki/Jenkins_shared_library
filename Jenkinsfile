@@ -26,8 +26,8 @@ pipeline{
         stage("Sonarqube Analysis "){
             steps{
                 withSonarQubeEnv('sonar-server') {
-                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=youtube \
-                    -Dsonar.projectKey=youtube '''
+                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=YouTube \
+                    -Dsonar.projectKey=YouTube '''
                 }
             }
         }
