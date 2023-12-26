@@ -1,4 +1,3 @@
-@Library('Jenkins_shared_library') _
 def COLOR_MAP = [
     'FAILURE' : 'danger',
     'SUCCESS' : 'good'
@@ -6,12 +5,6 @@ def COLOR_MAP = [
 
 pipeline{
     agent any
-    parameters {
-        choice(name: 'action', choices: 'create\ndelete', description: 'Select create or destroy.')
-        
-        string(name: 'DOCKER_HUB_USERNAME', defaultValue: 'sevenajay', description: 'Docker Hub Username')
-        string(name: 'IMAGE_NAME', defaultValue: 'youtube', description: 'Docker Image Name')
-    }
     tools{
         jdk 'jdk17'
         nodejs 'node16'
@@ -19,42 +12,35 @@ pipeline{
     environment {
         SCANNER_HOME=tool 'sonar-scanner'
     }
-    stages{
+    stages {
         stage('clean workspace'){
             steps{
-                cleanWorkspace()
+                cleanWs()
             }
         }
-        stage('checkout from Git'){
+        stage('Checkout from Git'){
             steps{
-                checkoutGit('https://github.com/Ajithabikki/Youtube-clone-app.git', 'main')
+                git branch: 'main', url: 'https://github.com/Ajithabikki/Youtube-clone-app.git'
             }
         }
-        stage('sonarqube Analysis'){
-        when { expression { params.action == 'create'}}    
+        stage("Sonarqube Analysis "){
             steps{
-                sonarqubeAnalysis()
-            }
-        }
-        stage('sonarqube QualitGate'){
-        when { expression { params.action == 'create'}}    
-            steps{
-                script{
-                    def credentialsId = 'Sonar-token'
-                    qualityGate(credentialsId)
+                withSonarQubeEnv('sonar-server') {
+                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=youtube \
+                    -Dsonar.projectKey=youtube '''
                 }
             }
         }
-        stage('Npm'){
-        when { expression { params.action == 'create'}}    
-            steps{
-                npmInstall()
-            }
+        stage("quality gate"){
+           steps {
+                script {
+                    waitForQualityGate abortPipeline: false, credentialsId: 'Sonar-token' 
+                }
+            } 
         }
-        stage('Trivy file scan'){
-        when { expression { params.action == 'create'}}    
-            steps{
-                trivyFs()
+        stage('Install Dependencies') {
+            steps {
+                sh "npm install"
             }
         }
         stage('OWASP FS SCAN') {
@@ -63,47 +49,42 @@ pipeline{
                 dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
             }
         }
-        stage('Docker Build'){
-        when { expression { params.action == 'create'}}    
+        stage('TRIVY FS SCAN') {
+            steps {
+                sh "trivy fs . > trivyfs.txt"
+            }
+        }
+        stage("Docker Build & Push"){
             steps{
                 script{
-                   def dockerHubUsername = params.DOCKER_HUB_USERNAME
-                   def imageName = params.IMAGE_NAME
-                   
-                   dockerBuild(dockerHubUsername, imageName)
+                   withDockerRegistry(credentialsId: 'docker', toolName: 'docker'){   
+                       sh "docker build --build-arg REACT_APP_RAPID_API_KEY=f0ead79813ms -t youtube ."
+                       sh "docker tag youtube sevenajay/youtube:latest "
+                       sh "docker push sevenajay/youtube:latest "
+                    }
                 }
             }
         }
-        stage('Trivy iamge'){
-        when { expression { params.action == 'create'}}    
+        stage("TRIVY"){
             steps{
-                trivyImage()
+                sh "trivy image sevenajay/youtube:latest > trivyimage.txt" 
             }
         }
-        stage('Run container'){
-        when { expression { params.action == 'create'}}    
+        stage('Deploy to container'){
             steps{
-                runContainer()
+                sh 'docker run -d --name youtube1 -p 3000:3000 sevenajay/youtube:latest'
             }
         }
-        stage('Remove container'){
-        when { expression { params.action == 'delete'}}    
+        stage('Deploy to kubernets'){
             steps{
-                removeContainer()
+                script{
+                    withKubeConfig(caCertificate: '', clusterName: '', contextName: '', credentialsId: 'k8s', namespace: '', restrictKubeConfigAccess: false, serverUrl: '') {
+                        sh 'kubectl apply -f deployment.yml'
+                    }
+                }
             }
         }
-        stage('Kube deploy'){
-        when { expression { params.action == 'create'}}    
-            steps{
-                kubeDeploy()
-            }
-        }
-        stage('kube deleter'){
-        when { expression { params.action == 'delete'}}    
-            steps{
-                kubeDelete()
-            }
-        }
+
     }
     post {
     always {
