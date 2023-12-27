@@ -1,6 +1,6 @@
 def call() {
     withSonarQubeEnv('sonar-server') {
-                        sh ''' ${scannrHome}/bin/sonar-scanner \
+                        sh ''' ${scannerHome}/bin/sonar-scanner \
                         -Dsonar.projectName=YouTube \
                         -Dsonar.projectKey=YouTube 
         
